@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bacteria</title>
+    <style type="text/css">
+        body, html {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<canvas style="width: 100%;height: 100%" id="meta-ball"></canvas>
+<script type="application/javascript">
+    const canvas = document.getElementById("meta-ball");
+    canvas.width = document.body.clientWidth;
+    canvas.height = document.body.clientHeight;
+    var ctx = canvas.getContext("2d");
+
+    const cx = canvas.width >> 1;
+    const cy = canvas.height >> 1;
+
+    const DOUBLE_PI = Math.PI * 2;
+    const HALF_PI = Math.PI / 2;
+    const v = 0.5;
+
+    function Bacteria(option) {
+        this.width = option.width || 0;
+        this.height = option.height || 0;
+        this.cx = option.cx || 0;
+        this.cy = option.cy || 0;
+        this.r = option.r || 200;
+        this.r1 = option.r1 || 50;
+        this.count = option.count || 6;
+        this.rang = this.r1 - Math.random() * 2;
+        this.array = [];
+
+
+        //比较耗性能
+        for (let i = 0; i < this.count; i++) {
+            const theta = Math.random() * DOUBLE_PI;
+            const radial = (this.r - Math.random() * this.rang);
+            const cx = this.cx + radial * Math.cos(theta);
+            const cy = this.cy - radial * Math.sin(theta);
+            this.array.push({
+                speed: option.speed || 1,
+                vector: Math.random() * DOUBLE_PI,
+                cx: cx,
+                cy: cy,
+                r: this.r1
+            });
+        }
+
+        this.angle = function (x1, y1, x2, y2) {
+            return Math.atan2(y2 - y1, x2 - x1);
+        };
+
+        this.getVector = function (cx, cy, a, r) {
+            return {x: cx + r * Math.cos(a), y: cy + r * Math.sin(a)};
+        };
+
+        this.dist = function (x1, y1, x2, y2) {
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+        };
+
+        this.draw = function (ctx) {
+            ctx.clearRect(this.cx - (this.width >> 1), this.cy - (this.height >> 1), this.width, this.height);
+            for (let i = 0; i < this.count; i++) {
+                const circle = this.array[i];
+                this._update(ctx, this.cx, this.cy, this.r, circle, true);
+            }
+
+            //比较耗性能
+            for (let i = 0; i < this.count; i++) {
+                const c1 = this.array[i];
+                for (let j = i+1; j < this.count; j++) {
+                    const c2 = this.array[j];
+                    const d = this.dist(c1.x,c1.y,c2.x,c2.y);
+                    if((d >= c1.r + c2.r) || d <= Math.abs(c1.r - c2.r)){
+                        continue;
+                    }
+                    this._update(ctx,c1.cx,c1.cy,c1.r,c2,false);
+                }
+            }
+        };
+
+        this.drawCircle = function (x, y, radius, color) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.arc(x, y, radius, 0, 2 * Math.PI, true);
+            ctx.stroke();
+        };
+
+        this.move = function (circle) {
+            circle.cx += Math.cos(circle.vector) * circle.speed;
+            circle.cy -= Math.sin(circle.vector) * circle.speed;
+            const d = this.dist(circle.cx, circle.cy, this.cx, this.cy);
+            let newRadius = 0;
+
+            if (d > this.r) {
+                newRadius = this.r;
+            } else if (d <= this.r - this.rang) {
+                newRadius = this.r - this.rang
+            } else {
+                return;
+            }
+
+            let f = Math.acos((circle.cx - this.cx) / this.dist(circle.cx - this.cx, circle.cy - this.cy, 0, 0));
+            if (circle.cy > this.cy) {
+                f = Math.PI * 2 - f;
+            }
+            //限制超出范围，计算临界坐标
+            circle.cx = this.cx + newRadius * Math.cos(f);
+            circle.cy = this.cy - newRadius * Math.sin(f);
+            //粒子的方向向量
+            const vectorI = {x: Math.cos(circle.vector), y: Math.sin(circle.vector)};
+            //对称轴向量
+            const vectorN = {x: circle.cx - this.cx, y: -circle.cy + this.cy};
+            const iDotN = vectorI.x * vectorN.x + vectorI.y * vectorN.y;
+            const q = 2 * iDotN / (Math.pow(vectorN.x, 2) + Math.pow(vectorN.y, 2));
+            const vectorM = {x: -(q * vectorN.x - vectorI.x), y: -(q * vectorN.y - vectorI.y)};
+            let theta = Math.acos(vectorM.x / Math.sqrt(Math.pow(vectorM.x, 2) + Math.pow(vectorM.y, 2)));
+            if (vectorM.y < 0) {
+                theta = 2 * Math.PI - theta;
+            }
+            circle.vector = theta;
+        };
+
+
+        this._update = function (ctx, cx, cy, r, circle, needMove = true) {
+            const cx1 = circle.cx;
+            const cy1 = circle.cy;
+            const ro1 = circle.r;
+
+            if (needMove) {
+                this.move(circle)
+            }
+
+            const d = this.dist(cx, cy, cx1, cy1);
+            let u1 = 0;
+            let u2 = 0;
+            if (d < r + ro1) {
+                u1 = Math.acos((r * r + d * d - ro1 * ro1) / ((r << 1) * d));
+                u2 = Math.acos((ro1 * ro1 + d * d - r * r) / ((ro1 << 1) * d));
+            } else {
+                u1 = 0;
+                u2 = 0;
+            }
+            const angleBetweenCenters = this.angle(cx, cy, cx1, cy1);
+            const spread = Math.acos((r - ro1) / d);
+            const angle1 = angleBetweenCenters + u1 + (spread - u1) * v;
+            const angle2 = angleBetweenCenters - (u1 + (spread - u1) * v);
+            const angle3 = angleBetweenCenters + Math.PI - u2 - (Math.PI - u2 - spread) * v;
+            const angle4 = angleBetweenCenters - (Math.PI - u2 - (Math.PI - u2 - spread) * v);
+
+            const p1 = this.getVector(cx, cy, angle1, r);
+            const p2 = this.getVector(cx, cy, angle2, r);
+            const p3 = this.getVector(cx1, cy1, angle3, ro1);
+            const p4 = this.getVector(cx1, cy1, angle4, ro1);
+
+            const totalRadius = r + ro1;
+            const d2Base = (this.dist(p1.x, p1.y, p3.x, p3.y) / totalRadius);
+            const d2 = d2Base * Math.min(1, (d << 1) / (r + ro1));
+            const r1 = r * d2;
+            const r2 = ro1 * d2;
+            const h1 = this.getVector(p1.x, p1.y, angle1 - HALF_PI, r1);
+            const h2 = this.getVector(p2.x, p2.y, angle2 + HALF_PI, r1);
+            const h3 = this.getVector(p3.x, p3.y, angle3 + HALF_PI, r2);
+            const h4 = this.getVector(p4.x, p4.y, angle4 - HALF_PI, r2);
+
+            ctx.beginPath();
+            ctx.fillStyle = "#764646";
+            ctx.moveTo(p1.x, p1.y);
+            ctx.arc(cx, cy, r, angle1, angle2, false);
+            ctx.bezierCurveTo(h2.x, h2.y, h4.x, h4.y, p4.x, p4.y);
+            ctx.arc(cx1, cy1, ro1, angle4, angle3, false);
+            ctx.bezierCurveTo(h3.x, h3.y, h1.x, h1.y, p1.x, p1.y);
+            ctx.fill();
+
+            //DEBUG
+            // this.drawCircle(cx,cy,r,"#098097");
+            // this.drawCircle(cx1,cy1,ro1,"#a87622");
+
+
+        };
+    };
+    var array = [];
+    for (let i = 0; i < 1; i++) {
+        const bacteria = new Bacteria({
+            width: canvas.width,
+            height: canvas.height,
+            speed: 0.5,
+            cx: canvas.width>>1,
+            cy: canvas.height>>1,
+            r: 200,
+            r1: 160,
+            count: 10
+        });
+        array.push(bacteria)
+    }
+
+    function updateBacteria() {
+        for (let i = 0; i < this.array.length; i++) {
+            this.array[i].draw(this.ctx);
+        }
+        requestAnimationFrame(updateBacteria.bind(this));
+    }
+    updateBacteria();
+
+</script>
+</body>
+</html>
